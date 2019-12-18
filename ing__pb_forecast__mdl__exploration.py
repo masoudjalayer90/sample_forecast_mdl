@@ -71,15 +71,24 @@ def main():
     l = pb_loss['Total_Loss'].resample('MS').mean()
 
     # plot pb data
-    g.plot(figsize=(15,6))
-    l.plot(figsize=(15,6))
+    g.plot(figsize=(15,10))
+    l.plot(figsize=(15,10))
     plt.title("PB Actuals Gain and Loss")
     plt.legend()
     plt.show()
 
+    from statsmodels.tsa.stattools import adfuller
+    result = adfuller(np.log(g))
+    print('ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+
     # three components of the sale data
     from pylab import rcParams
-    rcParams['figure.figsize'] = 18, 8
+    rcParams['figure.figsize'] = 15,10
     decomposition_gain = sm.tsa.seasonal_decompose(g, model='additive')
     fig_g = decomposition_gain.plot()
     plt.title("Decomposition PB Gain")
@@ -90,85 +99,91 @@ def main():
     plt.title("Decomposition PB Loss")
     plt.show(fig_l)
 
-    p = d = q = range(0,2)
-    pdq = list(itertools.product(p, d, q))
-    seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
-
-    grid_list_g = []
-    for param in pdq:
-        for param_seasonal in seasonal_pdq:
-            grid_results = {}
-            grid_results['param'] = param
-            grid_results['param_seasonal'] = param_seasonal
-            try:
-                mod = sm.tsa.statespace.SARIMAX(g,
-                                                order=param,
-                                                seasonal_order=param_seasonal,
-                                                enforce_stationarity=False,
-                                                enforce_invertibility=False)
-                results = mod.fit(disp=False)
-                grid_results['aic'] = results.aic
-            except:
-                continue
-            grid_list_g.append(grid_results)
-
-    df_grid_g = pd.DataFrame(grid_list_g)
-    df_grid_g = df_grid_g.sort_values('aic').reset_index()
-    param_min_g = df_grid_g.iloc[0]
-    print(param_min_g)
-
-    grid_list_l = []
-    for param in pdq:
-        for param_seasonal in seasonal_pdq:
-            grid_results = {}
-            grid_results['param'] = param
-            grid_results['param_seasonal'] = param_seasonal
-            try:
-                mod = sm.tsa.statespace.SARIMAX(l,
-                                                order=param,
-                                                seasonal_order=param_seasonal,
-                                                enforce_stationarity=False,
-                                                enforce_invertibility=False)
-                results = mod.fit(disp=False)
-                grid_results['aic'] = results.aic
-            except:
-                continue
-            grid_list_l.append(grid_results)
-
-    df_grid_l = pd.DataFrame(grid_list_l)
-    df_grid_l = df_grid_l.sort_values('aic').reset_index()
-    param_min_l = df_grid_l.iloc[0]
-    print(param_min_l)
+    # p = d = q = range(0,2)
+    # pdq = list(itertools.product(p, d, q))
+    # seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
+    #
+    # grid_list_g = []
+    # for param in pdq:
+    #     for param_seasonal in seasonal_pdq:
+    #         grid_results = {}
+    #         grid_results['param'] = param
+    #         grid_results['param_seasonal'] = param_seasonal
+    #         try:
+    #             mod = sm.tsa.statespace.SARIMAX(g,
+    #                                             order=param,
+    #                                             seasonal_order=param_seasonal,
+    #                                             enforce_stationarity=False,
+    #                                             enforce_invertibility=False)
+    #             results = mod.fit(disp=False)
+    #             grid_results['aic'] = results.aic
+    #         except:
+    #             continue
+    #         grid_list_g.append(grid_results)
+    #
+    # df_grid_g = pd.DataFrame(grid_list_g)
+    # df_grid_g = df_grid_g.sort_values('aic').reset_index()
+    # param_min_g = df_grid_g.iloc[0]
+    # print(param_min_g)
+    #
+    # grid_list_l = []
+    # for param in pdq:
+    #     for param_seasonal in seasonal_pdq:
+    #         grid_results = {}
+    #         grid_results['param'] = param
+    #         grid_results['param_seasonal'] = param_seasonal
+    #         try:
+    #             mod = sm.tsa.statespace.SARIMAX(l,
+    #                                             order=param,
+    #                                             seasonal_order=param_seasonal,
+    #                                             enforce_stationarity=False,
+    #                                             enforce_invertibility=False)
+    #             results = mod.fit(disp=False)
+    #             grid_results['aic'] = results.aic
+    #         except:
+    #             continue
+    #         grid_list_l.append(grid_results)
+    #
+    # df_grid_l = pd.DataFrame(grid_list_l)
+    # df_grid_l = df_grid_l.sort_values('aic').reset_index()
+    # param_min_l = df_grid_l.iloc[0]
+    # print(param_min_l)
 
     mod_g = sm.tsa.statespace.SARIMAX(g,
-                                    order=param_min_g["param"],
-                                    seasonal_order=param_min_g["param_seasonal"],
+                                    order=(2,1,2),
+                                    seasonal_order=(0,1,0,12),
+                                    trend='ct',
                                     enforce_stationarity=False,
                                     enforce_invertibility=False)
 
     results_g = mod_g.fit()
     print(results_g.summary().tables[1])
-    # results_g.plot_diagnostics(figsize=(16,8))
+    results_g.plot_diagnostics(figsize=(15,10))
     plt.show()
 
     mod_l = sm.tsa.statespace.SARIMAX(l,
-                                    order=param_min_l["param"],
-                                    seasonal_order=param_min_l["param_seasonal"],
+                                    order=(0, 0, 0),
+                                    seasonal_order=(2, 1, 0, 12),
+                                    trend='ct',
                                     enforce_stationarity=False,
                                     enforce_invertibility=False)
 
     results_l = mod_l.fit()
     print(results_l.summary().tables[1])
-    # results_l.plot_diagnostics(figsize=(16,8))
+    results_l.plot_diagnostics(figsize=(15,10))
     plt.show()
 
     pred_g = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
-                                  dynamic=False)
+                                      dynamic=False)
+
+    # pred_g_nov = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
+    #                                   dynamic=False).predicted_mean
+    # print(pred_g_nov)
     pred_ci_g = pred_g.conf_int()
 
     ax = g.plot(label='Observed')
     pred_g.predicted_mean.plot(ax=ax, label='One-step ahead Forecast',
-                              alpha=.7, figsize=(14,7))
+                              alpha=.7, figsize=(15,10))
 
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:,0],
@@ -181,11 +196,14 @@ def main():
 
     pred_l = results_l.get_prediction(start=pd.to_datetime('2019-01-01'),
                                   dynamic=False)
+    # pred_l_nov = results_l.get_prediction(start=pd.to_datetime('2019-01-01'),
+    #                                   dynamic=False).predicted_mean
+    # print(pred_l_nov)
     pred_ci_l = pred_l.conf_int()
 
     ax = l.plot(label='Observed')
     pred_l.predicted_mean.plot(ax=ax, label='One-step ahead Forecast',
-                              alpha=.7, figsize=(14,7))
+                              alpha=.7, figsize=(15,10))
 
     ax.fill_between(pred_ci_l.index,
                     pred_ci_l.iloc[:,0],
@@ -213,20 +231,24 @@ def main():
     print('The Root Mean Squared Error of our forecasts_gain is {}'.format(round(np.sqrt(mse_g), 2)))
     print('The Root Mean Squared Error of our forecasts_loss is {}'.format(round(np.sqrt(mse_l), 2)))
 
-    pred_uc_g = results_g.get_forecast(steps=36)
-    pred_ci_g = pred_uc_g.conf_int()
+    pred_uc_g = results_g.get_forecast(steps=24)
+    pred_ci_g = pred_uc_g.conf_int(alpha=0.1)
 
     pred_g_output = pd.DataFrame(pred_uc_g.predicted_mean)
+    print(type(pred_g_output))
     pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output.csv')
 
-    pred_uc_l = results_l.get_forecast(steps=36)
-    pred_ci_l = pred_uc_l.conf_int()
+    pred_uc_l = results_l.get_forecast(steps=24)
+    pred_ci_l = pred_uc_l.conf_int(alpha=0.1)
 
     pred_l_output = pd.DataFrame(pred_uc_l.predicted_mean)
     pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output.csv')
 
 
-    ax = g.plot(label='observed', figsize=(14,7))
+    # pred_combined = pd.merge(left=pred_l_output, right=pred_g_output, left_on='', right_on='')
+    # print(pred_combined)
+
+    ax = g.plot(label='observed', figsize=(15,10))
     pred_uc_g.predicted_mean.plot(ax=ax, label='Forecast_Gain')
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:,0],
@@ -237,7 +259,7 @@ def main():
     plt.title("PB Gain Projected Forecast")
     plt.show()
 
-    ax = l.plot(label='observed', figsize=(14,7))
+    ax = l.plot(label='observed', figsize=(15,10))
     pred_uc_l.predicted_mean.plot(ax=ax, label='Forecast_Loss')
     ax.fill_between(pred_ci_l.index,
                     pred_ci_l.iloc[:,0],
