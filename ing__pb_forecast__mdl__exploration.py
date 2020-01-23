@@ -42,48 +42,106 @@ def main():
     pb_loss = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_loss_totals.xlsx")
 
     oe_open = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog.xlsx")
-    oe_forecast = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens1_exog_forecast.xlsx")
+    oe_forecast = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog_forecast.xlsx")
 
     pb_gain = pb_gain.sort_values('Dates')
     pb_loss = pb_loss.sort_values('Dates')
 
     oe_open = oe_open.sort_values('Dates')
+
     oe_forecast = oe_forecast.sort_values('Dates')
 
     # grouping data by dates
     pb_gain = pb_gain.groupby('Dates')['Total_Gain'].sum().reset_index()
     pb_loss = pb_loss.groupby('Dates')['Total_Loss'].sum().reset_index()
+    # oe_open = oe_open.groupby('Dates')['OE_t1'].sum().reset_index()
+    # oe_forecast1 = oe_forecast.groupby('Dates')['OE_t1'].sum().reset_index()
 
-    oe_open = oe_open.groupby('Dates')['OE'].sum().reset_index()
-    oe_forecast = oe_forecast.groupby('Dates')['OE'].sum().reset_index()
+
+    # oe_forecast2 = oe_forecast.groupby('Dates')['OE_1'].sum().reset_index()
+    # oe_forecast3 = oe_forecast.groupby('Dates')['OE_2'].sum().reset_index()
+    # oe_forecast4 = oe_forecast.groupby('Dates')['OE_3'].sum().reset_index()
+    # oe_forecast5 = oe_forecast.groupby('Dates')['OE_4'].sum().reset_index()
+    # oe_forecast6 = oe_forecast.groupby('Dates')['OE_5'].sum().reset_index()
+    # oe_forecast7 = oe_forecast.groupby('Dates')['OE_6'].sum().reset_index()
+
 
     # set Date as index
     pb_gain = pb_gain.set_index('Dates')
     pb_loss = pb_loss.set_index('Dates')
 
+
+    # todo make an iterator
     oe_open = oe_open.set_index('Dates')
-    oe_fc = oe_forecast.set_index('Dates')
+    oe_fc1 = oe_forecast.set_index('Dates')
+    # oe_fc2 = oe_forecast2.set_index('Dates')
+    # oe_fc3 = oe_forecast3.set_index('Dates')
+    # oe_fc4 = oe_forecast4.set_index('Dates')
+    # oe_fc5 = oe_forecast5.set_index('Dates')
+    # oe_fc6 = oe_forecast6.set_index('Dates')
+    # oe_fc7 = oe_forecast7.set_index('Dates')
+
+
 
     g = pb_gain['Total_Gain'].resample('MS').mean()
     l = pb_loss['Total_Loss'].resample('MS').mean()
-    oe = oe_open['OE'].resample('MS').mean()
+    oe = oe_open.resample('MS').mean
+
+
 
     # plot pb data
     g.plot(figsize=(15,10))
     l.plot(figsize=(15,10))
-    oe.plot(figsize=(15,10))
-    plt.title("PB Actuals Gain and Loss, OE, OE1")
+    # oe.plot(figsize=(15,10))
+    plt.title("PB Actuals Gain and Loss, OE")
     plt.legend()
     plt.show()
 
-    # from statsmodels.tsa.stattools import adfuller
-    # result = adfuller(np.log(g))
-    # print('ADF Statistic: %f' % result[0])
+    from statsmodels.tsa.stattools import adfuller
+    # gain adf
+    result = adfuller(g['2017-01-01':])
+    print('Gain: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    result = adfuller(g['2017-01-01':].diff().dropna())
+    print('Gain Diff: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    # loss adf
+    result = adfuller(l)
+    print('Loss: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    result = adfuller(l.diff().dropna())
+    print('Loss Diff: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    # # oe adf
+    # result = adfuller(oe['2017-01-01':])
+    # print('oe: ADF Statistic: %f' % result[0])
     # print('p-value: %f' % result[1])
     # print('Critical Values:')
     # for key, value in result[4].items():
     #     print('\t%s: %.3f' % (key, value))
-
+    #
+    # result = adfuller(oe['2017-01-01':].diff().dropna())
+    # print('oe Diff: ADF Statistic: %f' % result[0])
+    # print('p-value: %f' % result[1])
+    # print('Critical Values:')
+    # for key, value in result[4].items():
+    #     print('\t%s: %.3f' % (key, value))
 
     # three components of the signal
     from pylab import rcParams
@@ -98,16 +156,17 @@ def main():
     plt.title("Decomposition PB Loss")
     plt.show(fig_l)
 
-    decomposition_oe = sm.tsa.seasonal_decompose(oe, model='additive')
-    fig_oe = decomposition_oe.plot()
-    plt.title("Decomposition OE")
-    plt.show(fig_oe)
-
     p = d = q = range(0,2)
     pdq = list(itertools.product(p, d, q))
     seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
-    # t_params = ['n', 'c', 't', 'ct']
 
+    mod = sm.tsa.statespace.SARIMAX(g['2017-01-01':],
+                                    exog=oe['2017-01-01':],
+                                    order=(1,1,1),
+                                    seasonal_order=(1,1,1, 12),
+                                    enforce_stationarity=False,
+                                    enforce_invertibility=False,
+                                    k_exog=3)
 
     grid_list_g = []
     for param in pdq:
@@ -116,17 +175,19 @@ def main():
             grid_results['param'] = param
             grid_results['param_seasonal'] = param_seasonal
             try:
-                mod = sm.tsa.statespace.SARIMAX(g,
-                                                exog=oe,
+                mod = sm.tsa.statespace.SARIMAX(g['2017-01-01':],
+                                                exog=oe['2017-01-01':],
                                                 order=param,
                                                 seasonal_order=param_seasonal,
                                                 enforce_stationarity=False,
-                                                enforce_invertibility=False)
+                                                enforce_invertibility=False,
+                                                k_exog=3)
                 results = mod.fit(disp=False)
                 grid_results['aic'] = results.aic
             except:
                 continue
             grid_list_g.append(grid_results)
+
 
 
     df_grid_g = pd.DataFrame(grid_list_g)
@@ -142,7 +203,6 @@ def main():
             grid_results['param_seasonal'] = param_seasonal
             try:
                 mod = sm.tsa.statespace.SARIMAX(l,
-                                                exog=oe,
                                                 order=param,
                                                 seasonal_order=param_seasonal,
                                                 enforce_stationarity=False,
@@ -158,26 +218,22 @@ def main():
     param_min_l = df_grid_l.iloc[0]
     print(param_min_l)
 
-    mod_g = sm.tsa.statespace.SARIMAX(g,
+    mod_g = sm.tsa.statespace.SARIMAX(g['2017-01-01':],
                                       order=param_min_g['param'],
                                       seasonal_order=param_min_g['param_seasonal'],
-                                      exog=oe,
-                                      # order=(2,1,2),
-                                      # seasonal_order=(0,1,0,12),
+                                      exog=oe['2017-01-01':],
                                       enforce_stationarity=False,
-                                      enforce_invertibility=False)
+                                      enforce_invertibility=False,
+                                      k_exog=3)
 
     results_g = mod_g.fit()
     print(results_g.summary().tables[1])
-    results_g.plot_diagnostics(figsize=(15,10))
+    # results_g.plot_diagnostics(figsize=(15,10))
     plt.show()
 
     mod_l = sm.tsa.statespace.SARIMAX(l,
                                       order=param_min_l['param'],
                                       seasonal_order=param_min_l['param_seasonal'],
-                                      exog=oe,
-                                      # order=(0, 0, 0),
-                                      # seasonal_order=(2, 1, 0, 12),
                                       enforce_stationarity=False,
                                       enforce_invertibility=False)
 
@@ -187,18 +243,19 @@ def main():
     plt.show()
 
     pred_g = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
-                                      exog=oe,
+                                      exog=oe['2017-01-01':],
                                       dynamic=False)
 
     pred_ci_g = pred_g.conf_int()
 
-    ax = g.plot(label='Observed')
+    ax = g['2017-01-01':].plot(label='Observed')
     pred_g.predicted_mean.plot(ax=ax, label='One-step ahead Forecast',
                               alpha=.7, figsize=(15,10))
 
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:,0],
                     pred_ci_g.iloc[:,1], color='k', alpha=.2)
+
     plt.xlabel('Date')
     plt.ylabel('PB_Gain')
     plt.legend()
@@ -206,7 +263,6 @@ def main():
     plt.show()
 
     pred_l = results_l.get_prediction(start=pd.to_datetime('2019-01-01'),
-                                      exog=oe,
                                       dynamic=False)
     pred_ci_l = pred_l.conf_int()
 
@@ -224,10 +280,10 @@ def main():
     plt.show()
 
     g_forecasted = pred_g.predicted_mean
-    g_truth = g['2017':]
+    g_truth = g['2017-01-01':]
 
     l_forecasted = pred_l.predicted_mean
-    l_truth = l['2017':]
+    l_truth = l['2017-01-01':]
 
     # MSE
     mse_g = ((g_forecasted - g_truth)**2).mean()
@@ -240,37 +296,71 @@ def main():
     print('The Root Mean Squared Error of our forecasts_gain is {}'.format(round(np.sqrt(mse_g), 2)))
     print('The Root Mean Squared Error of our forecasts_loss is {}'.format(round(np.sqrt(mse_l), 2)))
 
-    pred_g_exog = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    # scenarios todo make an iterator
+    pred_g_exog1 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
                                            end=pd.to_datetime('2020-12-01'),
-                                           exog=oe_fc,
+                                           exog=oe_fc1,
                                            dynamic=False)
-    pred_ci_g = pred_g_exog.conf_int(alpha=0.1)
+    # pred_g_exog2 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc2,
+    #                                         dynamic=False)
+    # pred_g_exog3 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc3,
+    #                                         dynamic=False)
+    # pred_g_exog4 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc4,
+    #                                         dynamic=False)
+    # pred_g_exog5 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc5,
+    #                                         dynamic=False)
+    # pred_g_exog6 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc6,
+    #                                         dynamic=False)
+    # pred_g_exog7 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    #                                         end=pd.to_datetime('2020-12-01'),
+    #                                         exog=oe_fc7,
+    #                                         dynamic=False)
 
-    pred_l_exog = results_l.get_prediction(start=pd.to_datetime('2020-01-01'),
+    pred_ci_g = pred_g_exog1.conf_int(alpha=0.1)
+
+    pred_l = results_l.get_prediction(start=pd.to_datetime('2020-01-01'),
                                            end=pd.to_datetime('2020-12-01'),
-                                           exog=oe_fc,
                                            dynamic=False)
-    pred_ci_l = pred_l_exog.conf_int(alpha=0.1)
+    pred_ci_l = pred_l.conf_int(alpha=0.1)
 
-
-    # print(pred_g_exog.predicted_mean)
-    # print(pred_l_exog.predicted_mean)
 
     # pred_uc_g = results_g.get_forecast(steps=12)
     # pred_ci_g = pred_uc_g.conf_int(alpha=0.1)
 
-    pred_g_output = pd.DataFrame(pred_g_exog.predicted_mean)
-    pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output1.csv')
+    pred_g_output = pd.DataFrame(pred_g_exog1.predicted_mean)
+    pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce1.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog2.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce2.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog3.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce3.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog4.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce4.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog5.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce5.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog6.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce6.csv')
+    # pred_g_output = pd.DataFrame(pred_g_exog7.predicted_mean)
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce7.csv')
 
     # pred_uc_l = results_l.get_forecast(steps=12)
     # pred_ci_l = pred_uc_l.conf_int(alpha=0.1)
 
-    pred_l_output = pd.DataFrame(pred_l_exog.predicted_mean)
-    pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output1.csv')
+    pred_l_output = pd.DataFrame(pred_l.predicted_mean)
+    pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output.csv')
 
 
     ax = g.plot(label='observed', figsize=(15, 10))
-    pred_g_exog.predicted_mean.plot(ax=ax, label='Forecast_Gain')
+    pred_g_exog1.predicted_mean.plot(ax=ax, label='Forecast_Gain')
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:, 0],
                     pred_ci_g.iloc[:, 1], color='k', alpha=.25)
@@ -281,7 +371,7 @@ def main():
     plt.show()
 
     ax = l.plot(label='observed', figsize=(15, 10))
-    pred_l_exog.predicted_mean.plot(ax=ax, label='Forecast_Loss')
+    pred_l.predicted_mean.plot(ax=ax, label='Forecast_Loss')
     ax.fill_between(pred_ci_l.index,
                     pred_ci_l.iloc[:, 0],
                     pred_ci_l.iloc[:, 1], color='k', alpha=.25)
