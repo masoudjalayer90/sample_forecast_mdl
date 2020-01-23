@@ -48,7 +48,6 @@ def main():
     pb_loss = pb_loss.sort_values('Dates')
 
     oe_open = oe_open.sort_values('Dates')
-
     oe_forecast = oe_forecast.sort_values('Dates')
 
     # grouping data by dates
@@ -58,35 +57,17 @@ def main():
     # oe_forecast1 = oe_forecast.groupby('Dates')['OE_t1'].sum().reset_index()
 
 
-    # oe_forecast2 = oe_forecast.groupby('Dates')['OE_1'].sum().reset_index()
-    # oe_forecast3 = oe_forecast.groupby('Dates')['OE_2'].sum().reset_index()
-    # oe_forecast4 = oe_forecast.groupby('Dates')['OE_3'].sum().reset_index()
-    # oe_forecast5 = oe_forecast.groupby('Dates')['OE_4'].sum().reset_index()
-    # oe_forecast6 = oe_forecast.groupby('Dates')['OE_5'].sum().reset_index()
-    # oe_forecast7 = oe_forecast.groupby('Dates')['OE_6'].sum().reset_index()
-
-
     # set Date as index
     pb_gain = pb_gain.set_index('Dates')
     pb_loss = pb_loss.set_index('Dates')
 
-
     # todo make an iterator
     oe_open = oe_open.set_index('Dates')
     oe_fc1 = oe_forecast.set_index('Dates')
-    # oe_fc2 = oe_forecast2.set_index('Dates')
-    # oe_fc3 = oe_forecast3.set_index('Dates')
-    # oe_fc4 = oe_forecast4.set_index('Dates')
-    # oe_fc5 = oe_forecast5.set_index('Dates')
-    # oe_fc6 = oe_forecast6.set_index('Dates')
-    # oe_fc7 = oe_forecast7.set_index('Dates')
-
-
 
     g = pb_gain['Total_Gain'].resample('MS').mean()
     l = pb_loss['Total_Loss'].resample('MS').mean()
-    oe = oe_open.resample('MS').mean
-
+    oe = oe_open.resample('MS').mean()
 
 
     # plot pb data
@@ -160,14 +141,6 @@ def main():
     pdq = list(itertools.product(p, d, q))
     seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
 
-    mod = sm.tsa.statespace.SARIMAX(g['2017-01-01':],
-                                    exog=oe['2017-01-01':],
-                                    order=(1,1,1),
-                                    seasonal_order=(1,1,1, 12),
-                                    enforce_stationarity=False,
-                                    enforce_invertibility=False,
-                                    k_exog=3)
-
     grid_list_g = []
     for param in pdq:
         for param_seasonal in seasonal_pdq:
@@ -180,15 +153,12 @@ def main():
                                                 order=param,
                                                 seasonal_order=param_seasonal,
                                                 enforce_stationarity=False,
-                                                enforce_invertibility=False,
-                                                k_exog=3)
+                                                enforce_invertibility=False)
                 results = mod.fit(disp=False)
                 grid_results['aic'] = results.aic
             except:
                 continue
             grid_list_g.append(grid_results)
-
-
 
     df_grid_g = pd.DataFrame(grid_list_g)
     df_grid_g = df_grid_g.sort_values('aic').reset_index()
@@ -223,8 +193,7 @@ def main():
                                       seasonal_order=param_min_g['param_seasonal'],
                                       exog=oe['2017-01-01':],
                                       enforce_stationarity=False,
-                                      enforce_invertibility=False,
-                                      k_exog=3)
+                                      enforce_invertibility=False)
 
     results_g = mod_g.fit()
     print(results_g.summary().tables[1])
@@ -239,7 +208,7 @@ def main():
 
     results_l = mod_l.fit()
     print(results_l.summary().tables[1])
-    results_l.plot_diagnostics(figsize=(15,10))
+    # results_l.plot_diagnostics(figsize=(15,10))
     plt.show()
 
     pred_g = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
@@ -298,39 +267,15 @@ def main():
 
     # scenarios todo make an iterator
     pred_g_exog1 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-                                           end=pd.to_datetime('2020-12-01'),
-                                           exog=oe_fc1,
-                                           dynamic=False)
-    # pred_g_exog2 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc2,
-    #                                         dynamic=False)
-    # pred_g_exog3 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc3,
-    #                                         dynamic=False)
-    # pred_g_exog4 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc4,
-    #                                         dynamic=False)
-    # pred_g_exog5 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc5,
-    #                                         dynamic=False)
-    # pred_g_exog6 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc6,
-    #                                         dynamic=False)
-    # pred_g_exog7 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
-    #                                         end=pd.to_datetime('2020-12-01'),
-    #                                         exog=oe_fc7,
-    #                                         dynamic=False)
+                                            end=pd.to_datetime('2020-12-01'),
+                                            exog=oe_fc1,
+                                            dynamic=False)
 
     pred_ci_g = pred_g_exog1.conf_int(alpha=0.1)
 
     pred_l = results_l.get_prediction(start=pd.to_datetime('2020-01-01'),
-                                           end=pd.to_datetime('2020-12-01'),
-                                           dynamic=False)
+                                            end=pd.to_datetime('2020-12-01'),
+                                            dynamic=False)
     pred_ci_l = pred_l.conf_int(alpha=0.1)
 
 
@@ -339,18 +284,6 @@ def main():
 
     pred_g_output = pd.DataFrame(pred_g_exog1.predicted_mean)
     pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce1.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog2.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce2.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog3.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce3.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog4.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce4.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog5.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce5.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog6.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce6.csv')
-    # pred_g_output = pd.DataFrame(pred_g_exog7.predicted_mean)
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce7.csv')
 
     # pred_uc_l = results_l.get_forecast(steps=12)
     # pred_ci_l = pred_uc_l.conf_int(alpha=0.1)
@@ -381,8 +314,7 @@ def main():
     plt.title("PB Loss Projected Forecast")
     plt.show()
 
-
-    ## without exog vars
+    # without exog vars
     # ax = g.plot(label='observed', figsize=(15,10))
     # pred_uc_g.predicted_mean.plot(ax=ax, label='Forecast_Gain')
     # ax.fill_between(pred_ci_g.index,
