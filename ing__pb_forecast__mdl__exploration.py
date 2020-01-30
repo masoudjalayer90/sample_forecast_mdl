@@ -11,6 +11,10 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 import pandas as pd
+import sqlalchemy as db
+import pyodbc
+
+
 import requests
 import statsmodels.api as sm
 import warnings
@@ -37,38 +41,175 @@ __email__ = "masoud.jalayer@cheproximity.com.au"
 
 
 def main():
+    conn = pyodbc.connect('Driver={SQL Server};'
+                          'Server=PXLSTRRADAR,1771;'
+                          'Database=RADAR_DM;'
+                          'Trusted_Connection=yes;')
 
-    pb_gain = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_gain_totals.xlsx")
-    pb_loss = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_loss_totals.xlsx")
+    cursor = conn.cursor()
 
-    oe_open = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog.xlsx")
+    # model code look up
+    cursor.execute("""
+                      SELECT    *
+                      INTO	    #model
+                      FROM	    dm.dmr_model model
+                      WHERE	    model.MODEL_DESC = 'CLIENT PRIMARY BANK'
+                      """)
+    # hpb_1111
+    cursor.execute("""
+                      SELECT    metrics.CLIENT_KEY, convert(date,convert(varchar(10),metrics.CALENDAR_KEY ),112) as CALENDAR_KEY, MODEL_CODE
+                      INTO	    #hpb_1111_clients
+                      FROM	    dm.dmr_model_metrics metrics
+                                inner join #model
+                                on metrics.MODEL_KEY = #model.MODEL_KEY
+                      WHERE	    #model.MODEL_CODE = 'hpb_1111'
+                      """)
+
+    # <> hpb_1111
+    cursor.execute("""
+                      SELECT    metrics.CLIENT_KEY, convert(date,convert(varchar(10),metrics.CALENDAR_KEY ),112) as CALENDAR_KEY, MODEL_CODE
+                      INTO      #non_pb_clients
+                      FROM	    dm.dmr_model_metrics metrics
+                                INNER JOIN #model
+                                on metrics.MODEL_KEY = #model.MODEL_KEY
+                      WHERE	    #model.MODEL_CODE <> 'hpb_1111'
+                      """)
+
+    # pb_gain
+    cursor.execute("""
+                      SELECT    a.CALENDAR_KEY,a.MODEL_CODE, sum(customers) as customers
+                      INTO	    #pb_gain
+                      FROM	    (
+                                SELECT  a.CALENDAR_KEY,b.model_code,count((a.CLIENT_KEY)) as customers
+                                FROM	#hpb_1111_clients a
+                                        INNER JOIN dm.dmr_calendar cal
+                                        on a.calendar_key= convert(date,cal.calendar_date)
+                                        INNER JOIN #non_pb_clients b
+                                        on a.client_key = b.client_key
+                                        and b.calendar_key = convert(date,convert(varchar(10),cal.prev_month_end_key),112)
+                                GROUP BY	a.CALENDAR_KEY,b.model_code
+                                UNION ALL
+                                SELECT  a.CALENDAR_KEY,'Unknown' as model_code,count((a.CLIENT_KEY)) as customers
+                                FROM	#hpb_1111_clients a
+                                        INNER JOIN dm.dmr_calendar cal
+                                        on a.calendar_key= convert(date,cal.calendar_date )
+                                WHERE	NOT EXISTS
+                                        (
+                                        SELECT  'x'
+                                        FROM	(
+                                                SELECT	*
+                                                FROM	#non_pb_clients
+                                                UNION
+                                                SELECT	*
+                                                FROM	#hpb_1111_clients
+                                                )t
+                                        WHERE	t.client_key = a.client_key
+                                        and t.calendar_key = convert(date,convert(varchar(10),cal.prev_month_end_key),112)
+                                        )
+                                GROUP BY a.CALENDAR_KEY
+                                ) a
+                      GROUP BY	a.CALENDAR_KEY,a.MODEL_CODE
+                      """)
+
+
+    # pb_loss
+    cursor.execute("""
+                        SELECT	*
+                        INTO	#pb_loss
+                        FROM	(
+                                SELECT	convert(date,convert(varchar(10),cal.NEXT_MONTH_END_KEY),112) as CALENDAR_KEY,ISNULL(a.MODEL_CODE,'Unknown') as MODEL_CODE, count(distinct(b.CLIENT_KEY)) as customers
+                                FROM	#hpb_1111_clients b
+                                        INNER JOIN dm.dmr_calendar cal
+                                        on b.calendar_key = convert(date,cal.calendar_date)
+                                        LEFT OUTER JOIN #non_pb_clients a
+                                        ON a.calendar_key = convert(date,convert(varchar(10),cal.NEXT_MONTH_END_KEY),112)
+                                        AND a.CLIENT_KEY=b.CLIENT_KEY
+                                WHERE	not exists
+                                        (
+                                        SELECT	TOP(1) 'x'
+                                        FROM	#hpb_1111_clients n
+                                        WHERE	n.CLIENT_KEY=b.CLIENT_KEY
+                                                AND n.CALENDAR_KEY = convert(date,convert(varchar(10),cal.NEXT_MONTH_END_KEY),112)
+                                        )
+                                GROUP BY	convert(date,convert(varchar(10),cal.NEXT_MONTH_END_KEY),112),ISNULL(a.MODEL_CODE,'Unknown')
+                                ) a
+                        WHERE	a.CALENDAR_KEY<=getdate()
+                """)
+    # pb_gain
+    cursor.execute("""
+                      SELECT    DATEFROMPARTS(year(CALENDAR_KEY ),month(CALENDAR_KEY ), 01) as Dates, sum(customers) as Total_gain
+                      FROM	    #pb_gain
+                      WHERE     year(CALENDAR_KEY) > 2014
+                      GROUP BY  DATEFROMPARTS(year(CALENDAR_KEY ),month(CALENDAR_KEY ), 01)
+                      """)
+
+    gain_labels = ['Dates', 'Total_Gain']
+    gain_q = cursor.fetchall()
+    gain_list = []
+
+    # pb_loss
+    cursor.execute("""
+                      SELECT    DATEFROMPARTS(year(CALENDAR_KEY ),month(CALENDAR_KEY ), 01) as Dates, sum(customers) as Total_loss
+                      FROM	    #pb_loss
+                      GROUP BY  DATEFROMPARTS(year(CALENDAR_KEY ),month(CALENDAR_KEY ), 01)
+                      """)
+
+    loss_labels = ['Dates','Total_Loss']
+    loss_q = cursor.fetchall()
+    loss_list = []
+
+    # oe_actuals
+    cursor.execute("""
+                    c
+                    """)
+
+    oe_labels = ['Dates', 'OE_Actuals']
+    oe_q = cursor.fetchall()
+    oe_list = []
+
+    def list_to_df(query, lists, labels):
+        """ this function convert a lists of pyocdb components into a pandas DF"""
+        for row in query:
+            lists.append(list(row))
+        return pd.DataFrame(lists, columns=labels)
+
+    pb_gain = list_to_df(gain_q, gain_list, gain_labels)
+    pb_loss = list_to_df(loss_q, loss_list, loss_labels)
+    oe_open = list_to_df(oe_q, oe_list, oe_labels)
+
+
+    # pb_gain = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_gain_totals.xlsx")
+    # pb_loss = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_loss_totals.xlsx")
+    # oe_open = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog.xlsx")
+
     oe_forecast = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog_forecast.xlsx")
+
+    pb_gain['Dates'] = pd.to_datetime(pb_gain['Dates'], format='%Y-%m-%d')
+    pb_loss['Dates'] = pd.to_datetime(pb_loss['Dates'], format='%Y-%m-%d')
+    oe_open['Dates'] = pd.to_datetime(oe_open['Dates'], format='%Y-%m-%d')
+
+
 
     pb_gain = pb_gain.sort_values('Dates')
     pb_loss = pb_loss.sort_values('Dates')
-
     oe_open = oe_open.sort_values('Dates')
+
     oe_forecast = oe_forecast.sort_values('Dates')
 
     # grouping data by dates
     pb_gain = pb_gain.groupby('Dates')['Total_Gain'].sum().reset_index()
     pb_loss = pb_loss.groupby('Dates')['Total_Loss'].sum().reset_index()
-    # oe_open = oe_open.groupby('Dates')['OE_t1'].sum().reset_index()
-    # oe_forecast1 = oe_forecast.groupby('Dates')['OE_t1'].sum().reset_index()
-
 
     # set Date as index
     pb_gain = pb_gain.set_index('Dates')
     pb_loss = pb_loss.set_index('Dates')
 
-    # todo make an iterator
     oe_open = oe_open.set_index('Dates')
     oe_fc1 = oe_forecast.set_index('Dates')
 
     g = pb_gain['Total_Gain'].resample('MS').mean()
     l = pb_loss['Total_Loss'].resample('MS').mean()
-    oe = oe_open.resample('MS').mean()
-
+    oe = oe_open['OE_Actuals'].resample('MS').mean()
 
     # plot pb data
     g.plot(figsize=(15,10))
@@ -124,18 +265,20 @@ def main():
     # for key, value in result[4].items():
     #     print('\t%s: %.3f' % (key, value))
 
-    # three components of the signal
-    from pylab import rcParams
-    rcParams['figure.figsize'] = 15,10
-    decomposition_gain = sm.tsa.seasonal_decompose(g, model='additive')
-    fig_g = decomposition_gain.plot()
-    plt.title("Decomposition PB Gain")
-    plt.show(fig_g)
 
-    decomposition_loss = sm.tsa.seasonal_decompose(l, model='additive')
-    fig_l = decomposition_loss.plot()
-    plt.title("Decomposition PB Loss")
-    plt.show(fig_l)
+    # # three components of the signal
+    # from pylab import rcParams
+    # rcParams['figure.figsize'] = 15,10
+    # decomposition_gain = sm.tsa.seasonal_decompose(g, model='additive')
+    # fig_g = decomposition_gain.plot()
+    # plt.title("Decomposition PB Gain")
+    # plt.show(fig_g)
+    #
+    # decomposition_loss = sm.tsa.seasonal_decompose(l, model='additive')
+    # fig_l = decomposition_loss.plot()
+    # plt.title("Decomposition PB Loss")
+    # plt.show(fig_l)
+
 
     p = d = q = range(0,2)
     pdq = list(itertools.product(p, d, q))
@@ -198,7 +341,7 @@ def main():
     results_g = mod_g.fit()
     print(results_g.summary().tables[1])
     # results_g.plot_diagnostics(figsize=(15,10))
-    plt.show()
+    # plt.show()
 
     mod_l = sm.tsa.statespace.SARIMAX(l,
                                       order=param_min_l['param'],
@@ -209,7 +352,7 @@ def main():
     results_l = mod_l.fit()
     print(results_l.summary().tables[1])
     # results_l.plot_diagnostics(figsize=(15,10))
-    plt.show()
+    # plt.show()
 
     pred_g = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
                                       exog=oe['2017-01-01':],
@@ -265,35 +408,59 @@ def main():
     print('The Root Mean Squared Error of our forecasts_gain is {}'.format(round(np.sqrt(mse_g), 2)))
     print('The Root Mean Squared Error of our forecasts_loss is {}'.format(round(np.sqrt(mse_l), 2)))
 
-    # scenarios todo make an iterator
-    pred_g_exog1 = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
+    pred_g_exog = results_g.get_prediction(start=pd.to_datetime('2020-01-01'),
                                             end=pd.to_datetime('2020-12-01'),
                                             exog=oe_fc1,
                                             dynamic=False)
 
-    pred_ci_g = pred_g_exog1.conf_int(alpha=0.1)
+    pred_ci_g = pred_g_exog.conf_int(alpha=0.1)
 
     pred_l = results_l.get_prediction(start=pd.to_datetime('2020-01-01'),
                                             end=pd.to_datetime('2020-12-01'),
                                             dynamic=False)
     pred_ci_l = pred_l.conf_int(alpha=0.1)
 
-
-    # pred_uc_g = results_g.get_forecast(steps=12)
-    # pred_ci_g = pred_uc_g.conf_int(alpha=0.1)
-
-    pred_g_output = pd.DataFrame(pred_g_exog1.predicted_mean)
-    pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output_sce1.csv')
-
-    # pred_uc_l = results_l.get_forecast(steps=12)
-    # pred_ci_l = pred_uc_l.conf_int(alpha=0.1)
+    pred_g_output = pd.DataFrame(pred_g_exog.predicted_mean)
+    pred_g_output = pred_g_output.reset_index(drop=False)
+    g_columns = ['Dates', 'Total_Gain']
+    pred_g_output.columns = g_columns
+    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output.csv')
 
     pred_l_output = pd.DataFrame(pred_l.predicted_mean)
-    pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output.csv')
+    pred_l_output = pred_l_output.reset_index(drop=False)
+    l_columns = ['Dates', 'Total_Loss']
+    pred_l_output.columns = l_columns
+    # pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output.csv')
 
+    pb_gain['Forecast_Actuals'] = 'Actuals'
+    pred_g_output['Forecast_Actuals'] = 'Forecast'
+
+    # def df_join(df, frames):
+    #     """This function resets the index of the df and joins to another specified df"""
+    #     df = df.reset_index(drop=False)
+    #     joined_df = pd.concat(frames, axis=0, ignore_index=True)
+    #     return joined_df
+
+    pb_gain = pb_gain.reset_index(drop=False)
+    gain_frame = [pb_gain, pred_g_output]
+    df_acq = pd.concat(gain_frame, axis=0, ignore_index=True)
+
+    pb_loss = pb_loss.reset_index(drop=False)
+    loss_frame = [pb_loss, pred_l_output]
+    df_att = pd.concat(loss_frame, axis=0, ignore_index=True)
+
+    oe_open = oe_open.reset_index(drop=False)
+    open_frame = [oe_open, oe_forecast]
+    df_oe = pd.concat(open_frame, axis=0, ignore_index=True)
+
+    total = pd.merge(df_acq, df_att, on='Dates')
+    total = pd.merge(total, df_oe, on='Dates')
+    print(total)
+
+    total.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/output.csv', index=False)
 
     ax = g.plot(label='observed', figsize=(15, 10))
-    pred_g_exog1.predicted_mean.plot(ax=ax, label='Forecast_Gain')
+    pred_g_exog.predicted_mean.plot(ax=ax, label='Forecast_Gain')
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:, 0],
                     pred_ci_g.iloc[:, 1], color='k', alpha=.25)
@@ -314,28 +481,6 @@ def main():
     plt.title("PB Loss Projected Forecast")
     plt.show()
 
-    # without exog vars
-    # ax = g.plot(label='observed', figsize=(15,10))
-    # pred_uc_g.predicted_mean.plot(ax=ax, label='Forecast_Gain')
-    # ax.fill_between(pred_ci_g.index,
-    #                 pred_ci_g.iloc[:,0],
-    #                 pred_ci_g.iloc[:,1], color='k', alpha=.25)
-    # plt.xlabel('Date')
-    # plt.ylabel('PB_Gain')
-    # plt.legend()
-    # plt.title("PB Gain Projected Forecast")
-    # plt.show()
-    #
-    # ax = l.plot(label='observed', figsize=(15,10))
-    # pred_uc_l.predicted_mean.plot(ax=ax, label='Forecast_Loss')
-    # ax.fill_between(pred_ci_l.index,
-    #                 pred_ci_l.iloc[:,0],
-    #                 pred_ci_l.iloc[:,1], color='k', alpha=.25)
-    # plt.xlabel('Date')
-    # plt.ylabel('PB_Loss')
-    # plt.legend()
-    # plt.title("PB Loss Projected Forecast")
-    # plt.show()
 
 if __name__ == "__main__":
     main()
