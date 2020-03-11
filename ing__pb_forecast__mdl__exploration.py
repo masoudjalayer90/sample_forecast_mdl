@@ -12,7 +12,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import sqlalchemy as db
 import pyodbc
 
 
@@ -44,6 +43,7 @@ __email__ = "masoud.jalayer@cheproximity.com.au"
 
 def main():
 
+    # 1.THE SECTION BELOW EXTRACTS THE DATA FROM THE DATABASE:
     '''
     conn = pyodbc.connect('Driver={SQL Server};'
                           'Server=PXLSTRRADAR,1771;'
@@ -91,7 +91,7 @@ def main():
 
     # <> hpb_1111
     cursor.execute("""
-                        SELECT   metrics.CLIENT_KEY, convert(date,convert(varchar(10),metrics.CALENDAR_KEY ),112) as CALENDAR_KEY, MODEL_CODE,
+                        SELECT  metrics.CLIENT_KEY, convert(date,convert(varchar(10),metrics.CALENDAR_KEY ),112) as CALENDAR_KEY, MODEL_CODE,
                                 case 
                                     when datediff(mm,#client_got.got_date,convert(date,convert(varchar(10),metrics.CALENDAR_KEY ),112)) <= 2
                                     then 1 
@@ -185,8 +185,7 @@ def main():
                                   end 
                       """)
 
-
-    gain_labels = ['Dates','Model_Code' , 'Total_Gain', 'Total_NTB']
+    gain_labels = ['Dates', 'Model_Code', 'Total_Gain', 'Total_NTB']
     gain_q = cursor.fetchall()
     gain_list = []
 
@@ -208,7 +207,7 @@ def main():
                                     end
                         """)
 
-    loss_labels = ['Dates','Model_Code', 'Total_Loss']
+    loss_labels = ['Dates', 'Model_Code', 'Total_Loss']
     loss_q = cursor.fetchall()
     loss_list = []
 
@@ -227,123 +226,139 @@ def main():
     oe_q = cursor.fetchall()
     oe_list = []
 
+
     def list_to_df(query, lists, labels):
         """ this function convert a lists of pyocdb components into a pandas DF"""
         for row in query:
             lists.append(list(row))
         return pd.DataFrame(lists, columns=labels)
 
-    pb_gain = list_to_df(gain_q, gain_list, gain_labels)
+    pb_gain_raw = list_to_df(gain_q, gain_list, gain_labels)
     pb_loss = list_to_df(loss_q, loss_list, loss_labels)
     oe_open = list_to_df(oe_q, oe_list, oe_labels)
 
 
     '''
-
-    #############################
-
     # pb_gain = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/test_gain.xlsx")
     pb_loss = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/test_loss.xlsx")
     oe_open = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog.xlsx")
-    oe_forecast = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog_forecast.xlsx")
-    pb_gain_split = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_gain_split.xlsx")
+    pb_gain_raw = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/PB_gain_split.xlsx")
 
-    pb_gain = pb_gain_split.pivot(index='Dates',columns='Model_Code')['Total_Gain']
+
+    # This is the location of the forecasted exogenous variable
+    oe_forecast = pd.read_excel("C:/Users/mjalayer/PycharmProjects/pb_forecast/data_in/OE_Opens_exog_forecast.xlsx")
+
+    # 2. IN THIS SECTION WE RESHAPE THE TABLES IN THE DESIRED FORMAT FOR THE TIME-SERIES ANALYSIS:
+
+    # we pivot the tables here, this is done for the output file.
+    # The total acquisition/attrition per month is created as a new field.
+    # The "total_gain" is used for the forecast
+    pb_gain = pb_gain_raw.pivot(index='Dates', columns='Model_Code')['Total_Gain']
     pb_gain['Total_Gain'] = pb_gain.sum(axis=1)
 
-    pb_ntb = pb_gain_split.pivot(index='Dates', columns='Model_Code')['New to Bank']
+    # the "New to bank" PB numbers are included in the total numbers.
+    # They are also pivoted as well. This is done for the output file.
+    pb_ntb = pb_gain_raw.pivot(index='Dates', columns='Model_Code')['Total_NTB']
     pb_ntb['Total_NTB'] = pb_ntb.sum(axis=1)
     nbt_columns = ['Other_Gain_NTB', 'Salary_Gain_NTB', 'Xbuy_Gain_NTB', 'Total_NTB']
     pb_ntb.columns = nbt_columns
 
+    # The loss is treated the same as the gain table above. There is no NTB component for loss tables.
     pb_loss = pb_loss.pivot(index='Dates', columns='Model_Code')['Total_Loss']
     pb_loss['Total_Loss'] = pb_loss.sum(axis=1)
 
-    pb_gain = pb_gain.sort_values('Dates')
-    pb_loss = pb_loss.sort_values('Dates')
-    oe_open = oe_open.sort_values('Dates')
-    oe_forecast = oe_forecast.sort_values('Dates')
-
+    # pb_gain = pb_gain.set_index('Dates')
+    # pb_loss = pb_loss.set_index('Dates')
     oe_open = oe_open.set_index('Dates')
-    oe_fc1 = oe_forecast.set_index('Dates')
+    oe_fc = oe_forecast.set_index('Dates')
 
     g = pb_gain['Total_Gain'].resample('MS').mean()
     l = pb_loss['Total_Loss'].resample('MS').mean()
     oe = oe_open['OE_opens'].resample('MS').mean()
 
-    # plot pb data
+    # A visual representation of the actuals
     g.plot(figsize=(15, 10))
     l.plot(figsize=(15, 10))
     oe.plot(figsize=(15, 10))
     plt.title("PB Actuals Gain and Loss, OE")
     plt.legend()
-    # plt.show()
+    plt.show()
 
-    # from statsmodels.tsa.stattools import adfuller
-    # # gain adf
-    # result = adfuller(g['2017-01-01':])
-    # print('Gain: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
-    #
-    # result = adfuller(g['2017-01-01':].diff().dropna())
-    # print('Gain Diff: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
-    #
-    # # loss adf
-    # result = adfuller(l)
-    # print('Loss: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
-    #
-    # result = adfuller(l.diff().diff().dropna())
-    # print('Loss Diff: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
-    #
-    # # oe adf
-    # result = adfuller(oe['2017-01-01':])
-    # print('oe: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
-    #
-    # result = adfuller(oe['2017-01-01':].diff().dropna())
-    # print('oe Diff: ADF Statistic: %f' % result[0])
-    # print('p-value: %f' % result[1])
-    # print('Critical Values:')
-    # for key, value in result[4].items():
-    #     print('\t%s: %.3f' % (key, value))
+    # 3. THE SECTION BELOW PERFORMS THE STATIONARY TEST (AUGMENTED DICKEY–FULLER TEST)
+    # THIS TEST IS PERFORMED TWICE FOR EACH SIGNAL, ON THE ORIGINAL AND DIFFERENCED SIGNAL.
+    # THIS IS DONE AS A SENSE CHECK.
 
+    from statsmodels.tsa.stattools import adfuller
+    # gain adf
+    result = adfuller(g['2017-01-01':])
+    print('Gain: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
 
+    result = adfuller(g['2017-01-01':].diff().dropna())
+    print('Gain Diff: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
 
-    # # three components of the signal
-    # from pylab import rcParams
-    # rcParams['figure.figsize'] = 15,10
-    # decomposition_gain = sm.tsa.seasonal_decompose(g, model='additive')
-    # fig_g = decomposition_gain.plot()
-    # plt.title("Decomposition PB Gain")
-    # # plt.show(fig_g)
-    #
+    # loss adf
+    result = adfuller(l)
+    print('Loss: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    result = adfuller(l.diff().diff().dropna())
+    print('Loss Diff: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    # oe adf
+    result = adfuller(oe['2017-01-01':])
+    print('oe: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    result = adfuller(oe['2017-01-01':].diff().dropna())
+    print('oe Diff: ADF Statistic: %f' % result[0])
+    print('p-value: %f' % result[1])
+    print('Critical Values:')
+    for key, value in result[4].items():
+        print('\t%s: %.3f' % (key, value))
+
+    # Here we visualise the decomposed signal for the gain and loss signals.
+    from pylab import rcParams
+    rcParams['figure.figsize'] = 15,10
+    decomposition_gain = sm.tsa.seasonal_decompose(g, model='additive')
+    fig_g = decomposition_gain.plot()
+    plt.title("Decomposition PB Gain")
+    plt.show(fig_g)
+
     decomposition_loss = sm.tsa.seasonal_decompose(l, model='additive')
     fig_l = decomposition_loss.plot()
     plt.title("Decomposition PB Loss")
-    # plt.show(fig_l)
+    plt.show(fig_l)
 
+    # 4. THE SARIMAX MODEL AND CHOOSING ITS PARAMETERS IS DONE BELOW:
+
+    # First we fit a number of models using all combinations of 0 or 1 for the p,d,q and P,D,Q terms.
+    # This possible values for p,d,q are listed below and can be extended.
+    # Extending the range will be exponentially more computationly expensive.
     p = d = q = range(0, 2)
     pdq = list(itertools.product(p, d, q))
     seasonal_pdq = [(x[0], x[1], x[2], 12) for x in list(itertools.product(p, d, q))]
 
+    # The model is run for ever combination of the parameters below. Note for the gain signal we only use the signal
+    # from the start of 2017, the signal before this time was vastly different and causes errors.
+    # Each parameter combination is recorded along with the AIC(Akaike Information Criterion)
     grid_list_g = []
     for param in pdq:
         for param_seasonal in seasonal_pdq:
@@ -362,12 +377,14 @@ def main():
             except:
                 continue
             grid_list_g.append(grid_results)
-
+    # The AIC is used as guidance to the best performing model.
     df_grid_g = pd.DataFrame(grid_list_g)
     df_grid_g = df_grid_g.sort_values('aic').reset_index()
     param_min_g = df_grid_g.iloc[0]
+    # We print out the parameter combination that leads to the lowest AIC.
     print(param_min_g)
 
+    # The same is done for the loss signal.
     grid_list_l = []
     for param in pdq:
         for param_seasonal in seasonal_pdq:
@@ -386,67 +403,59 @@ def main():
                 continue
             grid_list_l.append(grid_results)
 
-
     df_grid_l = pd.DataFrame(grid_list_l)
     df_grid_l = df_grid_l.sort_values('aic').reset_index()
     param_min_l = df_grid_l.iloc[0]
     print(param_min_l)
 
+    # The model is then run using the parameter combination chosen above.
+    # The exogenous variable is also included here.
     mod_g = sm.tsa.statespace.SARIMAX(g['2017-01-01':],
                                       order=param_min_g['param'],
                                       seasonal_order=param_min_g['param_seasonal'],
-                                      # order=(1, 1, 1),
-                                      # seasonal_order=(1, 1, 0, 12),
                                       exog=oe['2017-01-01':],
                                       enforce_stationarity=False,
                                       enforce_invertibility=False)
-
     results_g = mod_g.fit()
     print(results_g.summary().tables[1])
     # results_g.plot_diagnostics(figsize=(15,10))
     # plt.show()
 
+    # The model is then run using the parameter combination chosen above.
     mod_l = sm.tsa.statespace.SARIMAX(l,
                                       order=param_min_l['param'],
                                       seasonal_order=param_min_l['param_seasonal'],
-                                      # order=(1, 1, 1),
-                                      # seasonal_order=(1, 1, 1, 12),
                                       enforce_stationarity=False,
                                       enforce_invertibility=False)
-
     results_l = mod_l.fit()
     print(results_l.summary().tables[1])
     # results_l.plot_diagnostics(figsize=(15,10))
     # plt.show()
 
+    # 5. THE RESULTS ARE PLOTTED AS A ONE-STEP AHEAD FORECAST AGAINST ACTUALS
+
     pred_g = results_g.get_prediction(start=pd.to_datetime('2019-01-01'),
                                       exog=oe['2017-01-01':],
                                       dynamic=False)
-
     pred_ci_g = pred_g.conf_int()
-
     ax = g['2017-01-01':].plot(label='Observed')
     pred_g.predicted_mean.plot(ax=ax, label='One-step ahead Forecast',
                               alpha=.7, figsize=(15,10))
-
     ax.fill_between(pred_ci_g.index,
                     pred_ci_g.iloc[:,0],
                     pred_ci_g.iloc[:,1], color='k', alpha=.2)
-
     plt.xlabel('Date')
     plt.ylabel('PB_Gain')
     plt.legend()
     plt.title("PB Gain Forecast Validation")
-    # plt.show()
+    plt.show()
 
     pred_l = results_l.get_prediction(start=pd.to_datetime('2019-01-01'),
                                       dynamic=False)
     pred_ci_l = pred_l.conf_int()
-
     ax = l.plot(label='Observed')
     pred_l.predicted_mean.plot(ax=ax, label='One-step ahead Forecast',
                                alpha=.7, figsize=(15,10))
-
     ax.fill_between(pred_ci_l.index,
                     pred_ci_l.iloc[:, 0],
                     pred_ci_l.iloc[:, 1], color='k', alpha=.2)
@@ -454,7 +463,9 @@ def main():
     plt.ylabel('PB_Loss')
     plt.legend()
     plt.title("PB Loss Forecast Validation")
-    # plt.show()
+    plt.show()
+
+    # 6. THE PREDICTED MEAN IS USED TO CALCULATE THE MSE AND RMSE OF EACH MODEL
 
     g_forecasted = pred_g.predicted_mean
     g_truth = g['2017-01-01':]
@@ -465,7 +476,6 @@ def main():
     # MSE
     mse_g = ((g_forecasted - g_truth)**2).mean()
     mse_l = ((l_forecasted - l_truth) ** 2).mean()
-
     print('The MSE of the forecast_gain is {}'.format(round(mse_g, 2)))
     print('The MSE of the forecast_loss is {}'.format(round(mse_l, 2)))
 
@@ -473,16 +483,16 @@ def main():
     print('The Root Mean Squared Error of our forecasts_gain is {}'.format(round(np.sqrt(mse_g), 2)))
     print('The Root Mean Squared Error of our forecasts_loss is {}'.format(round(np.sqrt(mse_l), 2)))
 
+    # Standardisation of some datetime parameters.
     today = datetime.today()
     this_month = datetime(today.year, today.month, 1)
-
     year_end = datetime(today.year, 12, 1)
 
+    # The forecast is calculated here from the start to end date for gain and loss signals.
     pred_g_exog = results_g.get_prediction(start=this_month,
                                            end=year_end,
-                                           exog=oe_fc1,
+                                           exog=oe_fc,
                                            dynamic=False)
-
     pred_ci_g = pred_g_exog.conf_int(alpha=0.1)
 
     pred_l = results_l.get_prediction(start=this_month,
@@ -490,21 +500,23 @@ def main():
                                             dynamic=False)
     pred_ci_l = pred_l.conf_int(alpha=0.1)
 
+    # 7. OUTPUT DATA IS CONSTRUCTED HERE:
+
     pred_g_output = pd.DataFrame(pred_g_exog.predicted_mean)
     pred_g_output = pred_g_output.reset_index(drop=False)
     g_columns = ['Dates', 'Total_Gain']
     pred_g_output.columns = g_columns
-    # pred_g_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_g_output.csv')
 
     pred_l_output = pd.DataFrame(pred_l.predicted_mean)
     pred_l_output = pred_l_output.reset_index(drop=False)
     l_columns = ['Dates', 'Total_Loss']
     pred_l_output.columns = l_columns
-    # pred_l_output.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/pred_l_output.csv')
 
+    # Forecast/actual flag is set here.
     pb_gain['Forecast_Actuals'] = 'Actuals'
     pred_g_output['Forecast_Actuals'] = 'Forecast'
 
+    # The pivoted input tables are stitched to the output forecast numbers to form one output table.
     pb_gain = pb_gain.reset_index(drop=False)
     gain_frame = [pb_gain, pred_g_output]
     df_acq = pd.concat(gain_frame, axis=0, ignore_index=True)
@@ -531,7 +543,10 @@ def main():
                      'OE_opens', 'Net_PB']
     total.columns = total_columns
 
+    # Location of final output file.
     total.to_csv('C:/Users/mjalayer/PycharmProjects/pb_forecast/data_out/output_march.csv', index=False)
+
+    # 8. VISUALISATION OF THE FORECAST NUMBERS.
 
     ax = g.plot(label='observed', figsize=(15, 10))
     pred_g_exog.predicted_mean.plot(ax=ax, label='Forecast_Gain')
@@ -542,7 +557,7 @@ def main():
     plt.ylabel('PB_Gain')
     plt.legend()
     plt.title("PB Gain Projected Forecast")
-    # plt.show()
+    plt.show()
 
     ax = l.plot(label='observed', figsize=(15, 10))
     pred_l.predicted_mean.plot(ax=ax, label='Forecast_Loss')
@@ -553,7 +568,7 @@ def main():
     plt.ylabel('PB_Loss')
     plt.legend()
     plt.title("PB Loss Projected Forecast")
-    # plt.show()
+    plt.show()
 
 
 if __name__ == "__main__":
